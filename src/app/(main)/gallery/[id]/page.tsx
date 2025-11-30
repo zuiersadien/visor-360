@@ -36,9 +36,11 @@ export default function GalleryPreviewPage() {
     return id ? Number(id) : null
   }, [params.id])
 
+  const queryParams = fileId !== null ? { id: fileId } : undefined
+
   const [file, { isLoading, error }] = useQuery(
     getFileById,
-    fileId !== null ? { id: fileId } : undefined,
+    queryParams!, // usas ! para decirle TS que nunca es undefined aquí
     { enabled: fileId !== null }
   )
 

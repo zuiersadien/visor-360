@@ -2,7 +2,7 @@
 
 import { NextResponse } from "next/server"
 import { GetObjectCommand } from "@aws-sdk/client-s3"
-import { s3 } from "../sign/route"
+import { s3 } from "@/src/lib/aws-s3"
 
 // Función auxiliar para convertir stream a string
 async function streamToString(stream: any): Promise<string> {

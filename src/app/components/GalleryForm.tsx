@@ -11,7 +11,6 @@ import { useMutation, useQuery } from "@blitzjs/rpc"
 import createNewElement from "../(main)/gallery/mutations/createNewElement"
 import getProjects from "../queries/getProject"
 import { uploadFileDirectlyToS3 } from "../lib/uploadToS3"
-import { File } from "buffer"
 
 const videoSchema = z.object({
   startPlace: z.string().min(1, "Lugar requerido"),
