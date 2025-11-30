@@ -1,0 +1,131 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --------------------------------------
+
+model User {
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  name           String?
+  email          String   @unique
+  hashedPassword String?
+  role           String   @default("USER")
+
+  tokens          Token[]
+  sessions        Session[]
+  GpsPointComment GpsPointComment[]
+}
+
+model Session {
+  id                 Int       @id @default(autoincrement())
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  expiresAt          DateTime?
+  handle             String    @unique
+  hashedSessionToken String?
+  antiCSRFToken      String?
+  publicData         String?
+  privateData        String?
+
+  user   User? @relation(fields: [userId], references: [id])
+  userId Int?
+}
+
+model Token {
+  id          Int      @id @default(autoincrement())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  hashedToken String
+  type        String
+  // See note below about TokenType enum
+  // type        TokenType
+  expiresAt   DateTime
+  sentTo      String
+
+  user   User @relation(fields: [userId], references: [id])
+  userId Int
+
+  @@unique([hashedToken, type])
+}
+
+model Project {
+  id            Int             @id @default(autoincrement())
+  name          String
+  File          File[]
+  ProjectLegend ProjectLegend[]
+}
+
+model ProjectLegend {
+  id Int @id @default(autoincrement())
+
+  lat Float
+  lon Float
+
+  projectId   Int
+  project     Project @relation(fields: [projectId], references: [id])
+  description String?
+
+  markerId Int
+  marker   Marker @relation(fields: [markerId], references: [id])
+}
+
+model File {
+  id         Int        @id @default(autoincrement())
+  fileName   String
+  filePath   String
+  duration   Float
+  startPlace String
+  gpsPoints  GpsPoint[]
+
+  projectId Int?
+  project   Project? @relation(fields: [projectId], references: [id])
+}
+
+model Marker {
+  id            Int             @id @default(autoincrement())
+  name          String
+  icon          String
+  ProjectLegend ProjectLegend[]
+}
+
+model GpsPoint {
+  id              Int   @id @default(autoincrement())
+  lat             Float
+  lon             Float
+  second          Float
+  segmentDistance Float
+  totalDistance   Float
+
+  fileId          Int
+  file            File?             @relation(fields: [fileId], references: [id])
+  GpsPointComment GpsPointComment[]
+}
+
+model GpsPointComment {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  comment String
+  urlFile String? // archivo adjunto opcional
+
+  gpsPointId Int
+  gpsPoint   GpsPoint @relation(fields: [gpsPointId], references: [id])
+
+  createdBy Int
+  user      User @relation(fields: [createdBy], references: [id])
+
+  parentId Int?
+  parent   GpsPointComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies  GpsPointComment[] @relation("CommentReplies")
+}
