@@ -6,6 +6,7 @@ const nextConfig = {
     typedRoutes: true,
   },
   eslint: {
+    // Warning: no linting errors will block production builds
     ignoreDuringBuilds: true,
   },
 }
