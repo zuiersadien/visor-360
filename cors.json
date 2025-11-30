@@ -1,0 +1,9 @@
+[
+  {
+    "AllowedOrigin": ["*"],
+    "AllowedMethod": ["GET", "HEAD"],
+    "AllowedHeader": ["*"],
+    "ExposeHeader": ["ETag", "x-amz-meta-*"],
+    "MaxAgeSeconds": 3000
+  }
+]
