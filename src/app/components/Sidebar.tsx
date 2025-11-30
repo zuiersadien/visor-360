@@ -50,7 +50,7 @@ export default function Sidebar({ currentUser }: any) {
 
       <nav className="flex flex-col items-center gap-4 mt-5 ">
         {menu.map((item: any, i) => {
-          const active = pathname.startsWith(item.path)
+          const active = (pathname as any).startsWith(item.path)
 
           return (
             <button

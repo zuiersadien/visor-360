@@ -95,7 +95,7 @@ const LegendMarkers = React.memo(function LegendMarkers({
         map.set(
           item.id,
           L.icon({
-            iconUrl: item.marker.icon,
+            iconUrl: (item as any).marker.icon,
             iconSize: [25, 25],
             iconAnchor: [16, 32],
           })
@@ -114,7 +114,7 @@ const LegendMarkers = React.memo(function LegendMarkers({
         .map((item) => (
           <MarkerWithAutoTooltip
             key={item.id}
-            item={item}
+            item={item as any}
             icon={iconsById.get(item.id)}
             selectedPosition={selectedPosition}
           />
@@ -318,7 +318,7 @@ export default function GpsMap({
 
         <DraggablePointer
           markers={markers}
-          setMarkers={setMarkers}
+          setMarkers={setMarkers as any}
           addingMode={addingMode}
           setAddingMode={setAddingMode}
         />

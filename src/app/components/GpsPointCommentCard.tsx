@@ -392,7 +392,7 @@ function GpsPointCommentCardBase({
         setReplyToCommentId={setReplyToCommentId}
         userId={userId}
         loadComments={loadComments}
-        toast={toast}
+        toast={toast as any}
       />
     ))
   }, [comments, setCurrentTime, replyToCommentId, setReplyToCommentId, userId, loadComments])

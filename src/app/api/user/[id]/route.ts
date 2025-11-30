@@ -1,11 +1,14 @@
-// app/api/users/[id]/route.ts
 import { NextResponse } from "next/server"
 import db from "@/db"
 
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(req: Request) {
   try {
+    const url = new URL(req.url)
+    const parts = url.pathname.split("/")
+    const id = parts[parts.length - 1]
+
     const user = await db.user.findUnique({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
     })
 
     if (!user) return NextResponse.json({ error: "Usuario no encontrado" }, { status: 404 })
@@ -17,12 +20,16 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function PUT(req: Request, { params }: { params: { id: string } }) {
+export async function PUT(req: Request) {
   try {
+    const url = new URL(req.url)
+    const parts = url.pathname.split("/")
+    const id = parts[parts.length - 1]
+
     const data = await req.json()
 
     const updated = await db.user.update({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
       data,
     })
 
@@ -33,10 +40,14 @@ export async function PUT(req: Request, { params }: { params: { id: string } }) 
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: { id: string } }) {
+export async function DELETE(req: Request) {
   try {
+    const url = new URL(req.url)
+    const parts = url.pathname.split("/")
+    const id = parts[parts.length - 1]
+
     await db.user.delete({
-      where: { id: Number(params.id) },
+      where: { id: Number(id) },
     })
 
     return NextResponse.json({ message: "Usuario eliminado" })
