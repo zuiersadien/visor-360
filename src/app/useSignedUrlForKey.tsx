@@ -1,7 +1,8 @@
+// hooks/useSignedUrlForKey.ts
 "use client"
 import { useEffect, useState } from "react"
 
-export function useSignedUrl(key: string | null | undefined) {
+export function useSignedUrlForKey(key: string | null | undefined) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -11,11 +12,13 @@ export function useSignedUrl(key: string | null | undefined) {
     }
 
     let active = true
-    fetch(`/api/s3/getSignedUrl?key=${key}`)
+    fetch(`/api/s3/getSignedUrl?key=${encodeURIComponent(key)}`)
       .then((res) => res.json())
       .then((data) => {
         if (active) setSignedUrl(data.url)
       })
+      .catch(() => setSignedUrl(null))
+
     return () => {
       active = false
     }

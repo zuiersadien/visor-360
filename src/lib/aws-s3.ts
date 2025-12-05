@@ -3,7 +3,8 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3"
 
 export const s3 = new S3Client({
-  region: process.env.AWS_REGION, // región cualquiera para MinIO, puede ser fija
+  // region: process.env.AWS_REGION, // región cualquiera para MinIO, puede ser fija
+  region: "us-east-1",
   endpoint: process.env.S3_ENDPOINT, // tu MinIO local
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,

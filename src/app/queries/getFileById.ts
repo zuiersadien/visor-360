@@ -7,7 +7,18 @@ export default async function getFileById(input: Input, ctx: Ctx) {
   const file = await db.file.findUnique({
     where: { id: input.id },
     include: {
-      gpsPoints: true,
+      gpsPoints: {
+        include: {
+          GpsPointComment: {
+            include: {
+              replies: {
+                where: { parentId: { not: null } },
+                orderBy: { createdAt: "asc" },
+              },
+            },
+          },
+        },
+      },
       project: {
         include: {
           ProjectLegend: {
