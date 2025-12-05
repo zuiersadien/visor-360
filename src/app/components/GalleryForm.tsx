@@ -91,7 +91,7 @@ export default function GalleryForm() {
           <label className="text-gray-700 font-medium">Proyecto</label>
           <Dropdown
             options={projects || []}
-            value={formik.values.project}
+            value={projects?.find((p) => p.id === formik.values.project) || null}
             onChange={(e) => formik.setFieldValue("project", e.value.id)}
             optionLabel="name"
             placeholder="Seleccionar proyecto"

@@ -2,16 +2,21 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { PanelMenu } from "primereact/panelmenu"
+import { Button } from "primereact/button"
 import { Dialog } from "primereact/dialog"
 import { InputTextarea } from "primereact/inputtextarea"
-import { Button } from "primereact/button"
 import { Toast } from "primereact/toast"
 import { useSignedUrl } from "@/src/hooks/useSignedUrl"
 import { uploadFileDirectlyToS3 } from "../lib/uploadToS3"
-import { GpsPoint, GpsPointComment } from "@prisma/client"
-interface CommentWithGpsPoint extends GpsPointComment {
-  gpsPoint: GpsPoint
+import { GpsPoint, Marker, ProjectLegend } from "@prisma/client"
+import { MenuItem } from "primereact/menuitem"
+
+type GroupedMarker = {
+  markerId: number
+  marker: Marker
+  items: (ProjectLegend & { marker: Marker })[]
 }
+
 interface User {
   id: number
   name?: string
@@ -29,11 +34,13 @@ interface Comment {
 }
 
 interface Props {
+  projectLegend: (ProjectLegend & { marker: Marker })[]
   fileId: number
-  userId: number
-  points: GpsPoint[]
+  currentUser: User | null
+  file: { gpsPoints: GpsPoint[] }
   currentTime: number
   setCurrentTime: (t: number) => void
+  onSelectPosition: (pos: { lat: number; lon: number }) => void
 }
 
 function buildTree(comments: Comment[]): Comment[] {
@@ -53,24 +60,25 @@ function buildTree(comments: Comment[]): Comment[] {
   return roots
 }
 
-const GpsPointCommentCardPanel = ({
+const MapSidebar = ({
+  projectLegend,
   fileId,
-  userId,
-  points,
+  currentUser,
+  file,
   currentTime,
   setCurrentTime,
+  onSelectPosition,
 }: Props) => {
   const toast = useRef<Toast>(null)
 
-  // Comentarios cargados y su estado
+  // Estados
+  const [visibleGroups, setVisibleGroups] = useState<Record<number, boolean>>({})
   const [comments, setComments] = useState<Comment[]>([])
-
-  // Modal para responder comentario abierto
   const [openComment, setOpenComment] = useState<Comment | null>(null)
+
   const [replyText, setReplyText] = useState("")
   const [replyFile, setReplyFile] = useState<File | null>(null)
 
-  // Modal para nuevo comentario
   const [newCommentModalOpen, setNewCommentModalOpen] = useState(false)
   const [newCommentText, setNewCommentText] = useState("")
   const [newCommentFile, setNewCommentFile] = useState<File | null>(null)
@@ -78,16 +86,58 @@ const GpsPointCommentCardPanel = ({
   // URL firmado para vista previa PDF (solo para comentario abierto)
   const fileUrl = useSignedUrl(openComment?.urlFile ?? null)
 
-  // Carga inicial y refrescar comentarios
+  // Agrupar leyenda por markerId
+  const groups = useMemo(() => {
+    const map = new Map<number, GroupedMarker>()
+
+    for (const item of projectLegend) {
+      if (!map.has(item.markerId)) {
+        map.set(item.markerId, {
+          markerId: item.markerId,
+          marker: item.marker,
+          items: [],
+        })
+      }
+      map.get(item.markerId)!.items.push(item)
+    }
+
+    return Array.from(map.values())
+  }, [projectLegend])
+
+  // Inicializar visibleGroups solo una vez
+  useEffect(() => {
+    if (projectLegend.length > 0 && Object.keys(visibleGroups).length === 0) {
+      const initial = Object.fromEntries(projectLegend.map((pl) => [pl.markerId, true]))
+      setVisibleGroups(initial)
+    }
+  }, [projectLegend, visibleGroups])
+
+  // Cargar comentarios desde API
   const loadComments = useCallback(async () => {
-    const res = await fetch(`/api/gps-point-comment/list?fileId=${fileId}`)
-    const data: Comment[] = await res.json()
-    setComments(buildTree(data))
+    try {
+      const res = await fetch(`/api/gps-point-comment/list?fileId=${fileId}`)
+      const data: Comment[] = await res.json()
+      setComments(buildTree(data))
+    } catch (error) {
+      toast.current?.show({
+        severity: "error",
+        summary: "Error",
+        detail: "No se pudieron cargar los comentarios",
+      })
+    }
   }, [fileId])
 
   useEffect(() => {
     loadComments()
   }, [loadComments])
+
+  // Toggle visibleGroups
+  const toggleGroup = useCallback((markerId: number) => {
+    setVisibleGroups((prev) => ({
+      ...prev,
+      [markerId]: !prev[markerId],
+    }))
+  }, [])
 
   // Enviar respuesta a comentario abierto
   const submitReply = useCallback(async () => {
@@ -114,7 +164,7 @@ const GpsPointCommentCardPanel = ({
         comment: replyText,
         urlFile: uploadedFileUrl,
         gpsPointId: openComment.gpsPoint.id,
-        createdBy: userId,
+        createdBy: currentUser?.id ?? 3,
         parentId: openComment.id,
       }),
       headers: { "Content-Type": "application/json" },
@@ -122,9 +172,9 @@ const GpsPointCommentCardPanel = ({
 
     setReplyText("")
     setReplyFile(null)
-    loadComments()
     setOpenComment(null)
-  }, [openComment, replyText, replyFile, userId, loadComments])
+    loadComments()
+  }, [openComment, replyText, replyFile, currentUser, loadComments])
 
   // Enviar nuevo comentario raíz
   const submitNewComment = useCallback(async () => {
@@ -137,7 +187,7 @@ const GpsPointCommentCardPanel = ({
       return
     }
 
-    const currentGpsPoint = points.find((p) => p.second === Math.trunc(currentTime)) ?? null
+    const currentGpsPoint = file.gpsPoints.find((p) => p.second === Math.trunc(currentTime)) ?? null
     if (!currentGpsPoint) {
       toast.current?.show({
         severity: "warn",
@@ -161,7 +211,7 @@ const GpsPointCommentCardPanel = ({
         comment: newCommentText,
         urlFile: uploadedFileUrl,
         gpsPointId: currentGpsPoint.id,
-        createdBy: userId,
+        createdBy: currentUser?.id ?? 3,
       }),
       headers: { "Content-Type": "application/json" },
     })
@@ -170,36 +220,121 @@ const GpsPointCommentCardPanel = ({
     setNewCommentFile(null)
     setNewCommentModalOpen(false)
     loadComments()
-  }, [newCommentText, newCommentFile, points, currentTime, userId, loadComments])
-  function formatTime(seconds: number) {
-    const m = Math.floor(seconds / 60)
-    const s = seconds % 60
-    return `${m}:${s.toString().padStart(2, "0")}`
-  }
+  }, [newCommentText, newCommentFile, file.gpsPoints, currentTime, currentUser, loadComments])
 
-  // Modelo para PanelMenu, solo nivel 1, con contador de respuestas y botones
-  const menuModel = useMemo(() => {
-    const countReplies = (c: Comment) => c.replies.length
+  // Construir el modelo combinado para PanelMenu
+  const menuModel: MenuItem[] = useMemo(() => {
+    // Items de leyenda (grupos)
+    const legendMenuItems = groups.map(({ marker, items }) => {
+      const enabled = visibleGroups[marker.id] ?? true
 
-    const mapItem = (c: CommentWithGpsPoint) => ({
-      icon: "pi pi-comment",
-      template: () => (
+      return {
+        label: marker.name,
+        icon: "pi pi-map-marker",
+        expanded: true,
+        disabled: !enabled,
+
+        template: (item, opt) => (
+          <div
+            className={`flex items-center gap-2 p-2 text-sm rounded
+              ${enabled ? "cursor-pointer hover:bg-gray-100" : "opacity-40 cursor-not-allowed"}`}
+            onClick={(e) => {
+              if (!enabled) return
+              if ((e.target as HTMLElement).tagName !== "INPUT") {
+                opt.onClick?.(e)
+              }
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={() => toggleGroup(marker.id)}
+              onClick={(e) => e.stopPropagation()}
+            />
+            <i className="pi pi-map-marker text-sm" />
+            <span>{item.label}</span>
+          </div>
+        ),
+
+        items: items.map((item) => ({
+          label: `ID ${item.id}`,
+          data: item,
+          icon: "pi pi-circle",
+          disabled: !enabled,
+
+          template: (subItem) => (
+            <div
+              className={`flex flex-col gap-1 p-2 pl-4 rounded text-xs
+                ${enabled ? "cursor-pointer hover:bg-gray-100" : "opacity-40 cursor-not-allowed"}`}
+              onClick={() => enabled && onSelectPosition(item)}
+            >
+              <div className="flex items-center gap-2">
+                <i className="pi pi-map-marker text-sm text-blue-500" />
+                <span className="font-semibold">{subItem.data.description}</span>
+              </div>
+              <div className="ml-6 text-[11px] text-gray-600 leading-tight">
+                <div>
+                  <span className="font-medium">ID:</span> {item.id}
+                </div>
+                <div>
+                  <span className="font-medium">Lat:</span> {item.lat}
+                </div>
+                <div>
+                  <span className="font-medium">Lon:</span> {item.lon}
+                </div>
+              </div>
+            </div>
+          ),
+        })),
+      }
+    })
+
+    // Items de comentarios
+    const commentsMenuItem: MenuItem = {
+      label: "Comentarios",
+      icon: "pi pi-comments",
+      expanded: true,
+      template: (item, opt) => (
         <div
-          className="flex flex-col gap-1 p-1 rounded hover:bg-gray-100 cursor-pointer"
-          style={{ fontSize: "0.75rem" }}
-          title={c.comment}
-          onClick={() => setOpenComment(c)}
+          className="flex items-center gap-2 p-2 text-sm rounded cursor-pointer hover:bg-gray-100"
+          onClick={(e) => {
+            if ((e.target as HTMLElement).tagName !== "INPUT") {
+              opt.onClick?.(e)
+            }
+          }}
         >
-          <div className="flex justify-between items-center">
-            <span className="truncate max-w-xs font-medium" title={c.comment}>
-              {c.comment.length > 30 ? c.comment.slice(0, 30) + "..." : c.comment}
+          <i className="pi pi-comments text-sm" />
+          <span>{item.label}</span>
+          <Button
+            icon="pi pi-plus"
+            size="small"
+            className="ml-auto"
+            onClick={(e) => {
+              e.stopPropagation()
+              setNewCommentModalOpen(true)
+            }}
+            text
+          />
+        </div>
+      ),
+      items: comments.map((c) => ({
+        icon: "pi pi-comment",
+        label: c.comment.slice(0, 30) + (c.comment.length > 30 ? "..." : ""),
+        data: c,
+        template: () => (
+          <div
+            className="flex items-center justify-between p-1 rounded hover:bg-gray-100 cursor-pointer"
+            style={{ fontSize: "0.75rem" }}
+            title={c.comment}
+            onClick={() => setOpenComment(c)}
+          >
+            <span className="truncate max-w-xs">
+              {c.comment.slice(0, 30) + (c.comment.length > 30 ? "..." : "")}
             </span>
-
             <div className="flex gap-1 items-center">
               <span className="text-xs text-gray-500 italic whitespace-nowrap">
-                {countReplies(c)} {countReplies(c) === 1 ? "respuesta" : "respuestas"}
+                {c.replies.length} {c.replies.length === 1 ? "respuesta" : "respuestas"}
               </span>
-
               <Button
                 icon="pi pi-eye"
                 className="p-button-text p-button-sm"
@@ -209,70 +344,39 @@ const GpsPointCommentCardPanel = ({
                   setOpenComment(c)
                 }}
               />
-
               <Button
                 icon="pi pi-map-marker"
                 className="p-button-text p-button-sm"
                 aria-label="Centrar punto"
                 onClick={(e) => {
                   e.stopPropagation()
-                  // Usa los datos del punto GPS para centrar el mapa y avanzar video
-                  centerMapAt(c.gpsPoint.lat, c.gpsPoint.lon)
-                  setCurrentTime(c.gpsPoint.second)
+                  onSelectPosition({ lat: c.gpsPoint.lat, lon: c.gpsPoint.lon })
                 }}
               />
             </div>
           </div>
-
-          <div className="text-xs text-gray-600">
-            <span className="mr-2">Lat: {c.gpsPoint.lat.toFixed(5)}</span>
-            <span className="mr-2">Lon: {c.gpsPoint.lon.toFixed(5)}</span>
-            <span>Tiempo: {formatTime(c.gpsPoint.second)}</span>
-          </div>
-        </div>
-      ),
-    })
-
-    return [
-      {
-        label: "Comentariossdas",
-        icon: "pi pi-comments",
-        expanded: true,
-        disabled: false,
-        template: (item, opt) => (
-          <div
-            className="flex items-center gap-2 p-2 text-sm rounded cursor-pointer hover:bg-gray-100"
-            onClick={(e) => {
-              if ((e.target as HTMLElement).tagName !== "INPUT") {
-                opt.onClick?.(e)
-              }
-            }}
-          >
-            <i className="pi pi-comments text-sm" />
-            <span>{item.label}</span>
-
-            <Button
-              icon="pi pi-plus"
-              size="small"
-              className="ml-auto"
-              onClick={(e) => {
-                e.stopPropagation()
-                setNewCommentModalOpen(true)
-              }}
-              text
-            />
-          </div>
         ),
-        items: comments.map(mapItem),
-      },
-    ]
-  }, [comments])
+      })),
+    }
+
+    return [...legendMenuItems, commentsMenuItem]
+  }, [
+    groups,
+    visibleGroups,
+    toggleGroup,
+    comments,
+    setNewCommentModalOpen,
+    setOpenComment,
+    onSelectPosition,
+  ])
 
   return (
-    <div className="p-2">
+    <div className="h-full p-2 w-full flex flex-col">
       <Toast ref={toast} />
 
-      <PanelMenu model={menuModel} className="!w-full" />
+      <div className="flex-grow overflow-auto">
+        <PanelMenu model={menuModel} className="!w-full" />
+      </div>
 
       {/* Modal para nuevo comentario raíz */}
       <Dialog
@@ -399,4 +503,4 @@ const GpsPointCommentCardPanel = ({
   )
 }
 
-export default React.memo(GpsPointCommentCardPanel)
+export default React.memo(MapSidebar)
