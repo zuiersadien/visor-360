@@ -10,39 +10,18 @@ import {
   AutoCompleteChangeEvent,
   AutoCompleteSelectEvent,
 } from "primereact/autocomplete"
-import { File, GpsPoint, GpsPointComment, Project, ProjectLegend } from "@prisma/client"
+import { File, GpsPoint, Project } from "@prisma/client"
 import PointTemplate from "@/src/app/components/PointTemplate"
 import { formatDistance } from "@/src/app/utis/formatDistance"
-import LegendMenu from "@/src/app/components/ProjectLegendCard"
-import GpsPointCommentCard from "@/src/app/components/GpsPointCommentCard"
-import { Button } from "primereact/button"
-import dynamic from "next/dynamic"
 import GpsMap from "@/src/app/components/GpsMap"
 import { uploadFileDirectlyToS3 } from "@/src/app/lib/uploadToS3"
-import { Marker, point } from "leaflet"
-import { ProgressSpinner } from "primereact/progressspinner"
 import CommentPreviewDialog from "@/src/app/components/CommentPreviewDialog"
 import NewCommentDialog from "@/src/app/components/NewCommentDialog"
 import { FullPageLoading } from "@/src/app/components/FullPageLoading"
-import { Card } from "primereact/card"
 import SidebarLegend from "@/src/app/components/SidebarLegend"
+import getTags from "@/src/app/queries/getTags"
+import { Tag } from "primereact/tag"
 
-type CommentWithReplies = GpsPointComment & {
-  replies: GpsPointComment[]
-}
-
-type FileWithRelations = File & {
-  project:
-    | (Project & {
-        ProjectLegend: (ProjectLegend & {
-          marker: Marker
-        })[]
-      })
-    | null
-  gpsPoints: (GpsPoint & {
-    GpsPointComment: CommentWithReplies[]
-  })[]
-}
 interface Params {
   id?: string
 }
@@ -111,24 +90,26 @@ export default function GalleryPreviewPage() {
   /** ----------------------------------
    * 6) Memo real para evitar rerenders
    ---------------------------------- */
-  const projectLegend = useMemo(() => {
-    return file?.project?.ProjectLegend ?? []
-  }, [file?.project?.ProjectLegend])
+  const pointsMarkers = useMemo(() => {
+    return file?.project?.PointMarker ?? []
+  }, [file?.project?.PointMarker])
 
   const [visibleGroups, setVisibleGroups] = useState<Record<number, boolean>>({})
 
   const [openPreviewDialog, setOpenPreviewDialog] = useState(false)
   const [openNewCommentDialog, setOpenNewCommentDialog] = useState(false)
 
-  const [selectComment, setSelectComment] = useState<
-    (GpsPointComment & { replies: GpsPointComment[] }) | null
-  >(null)
+  const [tagsOptions, { isLoading: isLoadingTags }] = useQuery(getTags, undefined)
+
+  const [selectComment, setSelectComment] = useState<any | null>(null)
+
+  const [newPosition, setNewPosition] = useState<[number, number] | null>(null)
 
   if (error) {
     return <div>Error cargando datos: {error.message}</div>
   }
 
-  if (isLoading) return <FullPageLoading />
+  if (isLoading && isLoadingTags) return <FullPageLoading />
   return (
     <div className="w-full h-full flex p-2 flex-col">
       {/* CONTENIDO */}
@@ -163,20 +144,24 @@ export default function GalleryPreviewPage() {
                   setCurrentTime(p.second)
                 }}
                 placeholder="Buscar distancia..."
+                size={"small"}
                 className="!w-full"
                 inputClassName="!w-full text-sm"
               />
             </div>
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 flex-1">
-              <Button
-                icon="pi pi-refresh"
-                text
-                className="p-button-sm"
-                onClick={() => window.location.reload()}
-              />
-              <Button icon="pi pi-info-circle" text className="p-button-sm" />
+            <div>
+              {file?.tags.map((tag) => (
+                <Tag
+                  key={tag.id}
+                  value={tag.name}
+                  style={{
+                    backgroundColor: `#${tag.color}`,
+                    color: "white",
+                  }}
+                  rounded
+                ></Tag>
+              ))}
             </div>
           </div>
 
@@ -191,27 +176,30 @@ export default function GalleryPreviewPage() {
 
         <CommentPreviewDialog
           visible={openPreviewDialog}
-          comment={selectComment}
+          pointMarker={selectComment}
+          tags={tagsOptions || []}
+          defaultTags={file?.tags || []}
           onHide={() => {
             setOpenPreviewDialog(false)
           }}
-          onSubmitReply={async (comment, pdf) => {
+          onSubmitReply={async (comment, pdf, tags, parentId) => {
             try {
               let urlFile = null
 
-              const createdBy = 3
+              const createdById = 1
               if (pdf) {
                 urlFile = await uploadFileDirectlyToS3(pdf, pdf.name)
               }
 
-              const res = await fetch("/api/gps-point-comment/reply", {
+              const res = await fetch("/api/point-marker/reply", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                  commentId: selectComment?.id,
+                  parentId,
                   comment,
-                  createdBy,
                   urlFile,
+                  createdById,
+                  tags,
                 }),
               })
 
@@ -227,18 +215,18 @@ export default function GalleryPreviewPage() {
           }}
         ></CommentPreviewDialog>
         <NewCommentDialog
+          tags={tagsOptions || []}
+          defaultTags={file?.tags || []}
           visible={openNewCommentDialog}
+          newPosition={newPosition}
           onHide={() => {
             setOpenNewCommentDialog(false)
           }}
-          onSubmit={async ({ comment, file: pdf }) => {
+          onSubmit={async ({ comment, tags, marker, file: pdf }) => {
             try {
               let urlFile = null
-              const gpsPointId = file?.gpsPoints.find(
-                (e) => e.second === Math.trunc(currentTime)
-              )?.id
 
-              const createdBy = 3
+              const createdById = 1
 
               // 🔹 Subir archivo si existe
               if (pdf) {
@@ -246,14 +234,18 @@ export default function GalleryPreviewPage() {
               }
 
               // 🔹 Guardar comentario en la base de datos
-              const res = await fetch("/api/gps-point-comment", {
+              const res = await fetch("/api/point-marker", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   comment,
-                  gpsPointId,
-                  createdBy,
+                  createdById,
                   urlFile,
+                  projectId: file?.projectId,
+                  markerId: marker?.id,
+                  lat: newPosition?.[0],
+                  lon: newPosition?.[1],
+                  tags: tags.map((e) => e.id),
                 }),
               })
 
@@ -271,20 +263,19 @@ export default function GalleryPreviewPage() {
 
         <div className="w-1/2 bg-white border-l h-full flex flex-col overflow-auto">
           <SidebarLegend
-            projectLegend={projectLegend}
-            handleSelectLegendPoint={handleSelectLegendPoint}
+            tags={tagsOptions || []}
+            pointsMarkers={(pointsMarkers as any) || []}
+            onSelectPosition={handleSelectLegendPoint}
             visibleGroups={visibleGroups}
             setVisibleGroups={setVisibleGroups}
-            file={file}
-            setCurrentTime={setCurrentTime}
-            setSelectComment={setSelectComment}
-            setOpenPreviewDialog={setOpenPreviewDialog}
           />
 
           <div className=" shadow-lg p-4  rounded-xl w-full h-full flex-1 min-h-0  ">
             <GpsMap
+              newPosition={newPosition}
+              setNewPosition={setNewPosition}
               visibleGroups={visibleGroups}
-              legend={projectLegend}
+              legend={pointsMarkers}
               startKm={startKm}
               setCurrentTime={setCurrentTime}
               points={file?.gpsPoints ?? []}

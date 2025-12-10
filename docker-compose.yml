@@ -16,32 +16,32 @@ services:
       - ./cors.json:/root/.minio/config/cors.json
 
   postgres:
-    image: postgres:15
-    container_name: postgres
+    image: postgres:16
+    container_name: postgres_dev_nextviso
     restart: always
     environment:
-      POSTGRES_USER: blitz_user
-      POSTGRES_PASSWORD: blitz_password
-      POSTGRES_DB: blitz_db
+      POSTGRES_USER: viso_user
+      POSTGRES_PASSWORD: viso_password_123
+      POSTGRES_DB: viso_db
     ports:
-      - "5432:5432"
+      - "5599:5432"
     volumes:
       - ./postgres_data:/var/lib/postgresql/data
 
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: blitz_app
-    restart: always
-    depends_on:
-      - postgres
-      - minio
-    environment:
-      DATABASE_URL: postgres://blitz_user:blitz_password@postgres:5432/blitz_db
-      MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: minioadmin
-      MINIO_SECRET_KEY: minioadmin123
-      PORT: 3000
-    ports:
-      - "3000:3000"
+  # app:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: blitz_app
+  #   restart: always
+  #   depends_on:
+  #     - postgres
+  #     - minio
+  #   environment:
+  #     DATABASE_URL: postgres://blitz_user:blitz_password@postgres:5432/blitz_db
+  #     MINIO_ENDPOINT: http://minio:9000
+  #     MINIO_ACCESS_KEY: minioadmin
+  #     MINIO_SECRET_KEY: minioadmin123
+  #     PORT: 3000
+  #   ports:
+  #     - "3000:3000"

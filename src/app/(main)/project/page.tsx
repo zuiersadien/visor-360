@@ -7,18 +7,9 @@ import { Button } from "primereact/button"
 import { Dialog } from "primereact/dialog"
 import { InputText } from "primereact/inputtext"
 import { Toast } from "primereact/toast"
-import { Prisma } from "@prisma/client"
-import ProjectLegendCrud from "../../components/ProjectLegendCrud"
+import { Prisma, Project } from "@prisma/client"
+import PointMarkersManager from "../../components/PointMarkersManager"
 
-type Project = Prisma.ProjectGetPayload<{
-  include: {
-    ProjectLegend: {
-      include: {
-        marker: true
-      }
-    }
-  }
-}>
 export default function ProjectPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,7 +48,7 @@ export default function ProjectPage() {
   const rowExpansionTemplate = (data: Project) => {
     return (
       <div className="p-3">
-        <ProjectLegendCrud projectId={data.id} />
+        <PointMarkersManager projectId={data.id} />
       </div>
     )
   }
@@ -187,20 +178,19 @@ export default function ProjectPage() {
       </div>
 
       <DataTable
-        rowExpansionTemplate={rowExpansionTemplate}
         size="small"
         value={projects}
         loading={loading}
         expandedRows={expandedRows}
-        tableStyle={{ minWidth: "40rem" }}
         onRowToggle={(e) => setExpandedRows(e.data)}
+        rowExpansionTemplate={rowExpansionTemplate}
+        tableStyle={{ minWidth: "40rem" }}
       >
-        <Column expander={allowExpansion} style={{ width: "5rem" }} />
+        <Column expander style={{ width: "3rem" }} />
         <Column field="id" header="ID" style={{ width: "4rem" }} />
         <Column field="name" header="Nombre" />
         <Column header="Acciones" body={actionTemplate} style={{ width: "10rem" }} />
       </DataTable>
-
       <Dialog
         header="Marcadores"
         visible={openMarkers}

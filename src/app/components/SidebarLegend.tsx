@@ -1,16 +1,24 @@
+"use client"
+
+import { GpsPoint, Tag } from "@prisma/client"
 import { useState } from "react"
-import LegendMenu from "./ProjectLegendCard"
+import LegendMenu, { PointMarkerWithTags } from "./ProjectLegendCard"
+
+interface LegendMenuProps {
+  tags: Tag[]
+  pointsMarkers: PointMarkerWithTags[]
+  visibleGroups: Record<number, boolean>
+  onSelectPosition: (pos: GpsPoint) => void
+  setVisibleGroups: React.Dispatch<React.SetStateAction<Record<number, boolean>>>
+}
 
 export default function SidebarLegend({
-  projectLegend,
-  handleSelectLegendPoint,
+  tags,
+  pointsMarkers,
   visibleGroups,
+  onSelectPosition,
   setVisibleGroups,
-  file,
-  setCurrentTime,
-  setSelectComment,
-  setOpenPreviewDialog,
-}) {
+}: LegendMenuProps) {
   const [isOpen, setIsOpen] = useState(true)
 
   return (
@@ -39,17 +47,13 @@ export default function SidebarLegend({
             ${isOpen ? "max-h-64 opacity-100" : "max-h-0 opacity-0"}
           `}
         >
-          {/* Contenido interno (usa scroll) */}
           <div className="p-2 overflow-auto max-h-64">
             <LegendMenu
-              projectLegend={projectLegend}
-              onSelectPosition={handleSelectLegendPoint}
+              tags={tags}
+              pointsMarkers={pointsMarkers}
+              onSelectPosition={onSelectPosition}
               visibleGroups={visibleGroups}
               setVisibleGroups={setVisibleGroups}
-              gpsPoints={file?.gpsPoints || []}
-              setCurrentTime={setCurrentTime}
-              setSelectComment={setSelectComment}
-              setOpenPreview={setOpenPreviewDialog}
             />
           </div>
         </div>

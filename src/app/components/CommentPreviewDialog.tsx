@@ -1,62 +1,108 @@
-// components/CommentPreviewDialog.tsx
 "use client"
 import React, { useState, useRef, useEffect } from "react"
 import { Dialog } from "primereact/dialog"
 import { InputTextarea } from "primereact/inputtextarea"
 import { Button } from "primereact/button"
 import { Toast } from "primereact/toast"
-import { GpsPointComment } from "@prisma/client"
+import { MultiSelect } from "primereact/multiselect"
 import { useSignedUrlForKey } from "../useSignedUrlForKey"
+import { Tag } from "@prisma/client"
+
+interface PointMarkerWithReplies {
+  id: number
+  comment: string
+  urlFile?: string | null
+
+  tags: Tag[]
+  replies?: PointMarkerWithReplies[]
+}
 
 interface CommentPreviewDialogProps {
+  tags: Tag[]
+  defaultTags: Tag[]
+
   visible: boolean
-  comment: (GpsPointComment & { replies?: GpsPointComment[] }) | null
+  pointMarker: any | null // ahora pasamos solo el id para cargar datos
   onHide: () => void
-  onSubmitReply: (text: string, file: File | null) => Promise<void>
+  onSubmitReply: (
+    comment: string,
+    file: File | null,
+    tags: number[],
+    parentId: number
+  ) => Promise<void>
   getSignedUrlForReply?: (key: string) => Promise<string>
 }
 
 const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
   visible,
-  comment,
+  pointMarker,
   onHide,
   onSubmitReply,
   getSignedUrlForReply,
+  tags,
+  defaultTags,
 }) => {
+  const [comment, setComment] = useState<PointMarkerWithReplies | null>(null)
+
   const [replyText, setReplyText] = useState("")
   const [replyFile, setReplyFile] = useState<File | null>(null)
+  const [replyTags, setReplyTags] = useState<number[]>([])
 
-  // Estado para mostrar preview de archivo (comentario principal o respuestas)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-
-  // Estado para la clave del archivo de respuesta para obtener signed URL
   const [previewReplyFileKey, setPreviewReplyFileKey] = useState<string | null>(null)
 
   const toast = useRef<Toast>(null)
 
-  // Signed URL para archivo del comentario principal
-  const signedUrl = useSignedUrlForKey(comment?.urlFile ?? null)
+  // Cargar comment + replies cuando cambie el pointMarkerId o visible
+  useEffect(() => {
+    if (!visible || pointMarker === null) {
+      setComment(null)
+      return
+    }
 
-  // Signed URL para archivo de respuesta seleccionado (cuando previewReplyFileKey cambia)
+    // Cargar el comment con replies desde API (simulado con fetch)
+    fetch(`/api/point-marker/${pointMarker.id}`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Error cargando comment")
+        return res.json()
+      })
+      .then((data: PointMarkerWithReplies) => {
+        console.log(data)
+        setComment(data)
+      })
+      .catch((err) => {
+        console.error(err)
+        toast.current?.show({
+          severity: "error",
+          summary: "Error",
+          detail: "No se pudo cargar el comentario.",
+        })
+      })
+  }, [pointMarker, visible])
+
+  const signedUrl = useSignedUrlForKey(comment?.urlFile ?? null)
   const previewReplySignedUrl = useSignedUrlForKey(previewReplyFileKey)
 
-  // Cuando cambie el signedUrl del archivo de respuesta, actualizar previewUrl para mostrar en iframe
   useEffect(() => {
     if (previewReplySignedUrl) {
       setPreviewUrl(previewReplySignedUrl)
     }
   }, [previewReplySignedUrl])
 
-  // Reset formulario y preview cuando cambia visibilidad o comentario
   useEffect(() => {
     if (!visible) {
       setReplyText("")
       setReplyFile(null)
+      setReplyTags([])
       setPreviewUrl(null)
       setPreviewReplyFileKey(null)
     }
-  }, [visible, comment])
-
+  }, [visible, pointMarker])
+  useEffect(() => {
+    if (visible) {
+      setReplyTags(defaultTags.map((t) => t.id))
+    }
+  }, [visible, defaultTags])
   const handleSubmitReply = async () => {
     if (!replyText.trim()) {
       toast.current?.show({
@@ -67,10 +113,26 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
       return
     }
 
+    if (!comment) {
+      toast.current?.show({
+        severity: "error",
+        summary: "Error",
+        detail: "No hay comentario seleccionado para responder.",
+      })
+      return
+    }
+
     try {
-      await onSubmitReply(replyText, replyFile)
+      await onSubmitReply(replyText, replyFile, replyTags, comment.id)
       setReplyText("")
       setReplyFile(null)
+      setReplyTags([])
+
+      // Recargar el comment para mostrar la nueva respuesta
+      fetch(`/api/pointMarker/${comment.id}`)
+        .then((res) => res.json())
+        .then((data: PointMarkerWithReplies) => setComment(data))
+
       toast.current?.show({
         severity: "success",
         summary: "Respuesta enviada",
@@ -86,7 +148,6 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
     }
   }
 
-  // Manejar clic en "Ver archivo adjunto" de respuestas
   const handlePreviewReplyFile = async (fileKeyOrUrl: string) => {
     try {
       if (getSignedUrlForReply) {
@@ -95,7 +156,6 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
         setPreviewReplyFileKey(null)
         return
       }
-      // Si no tienes función externa, usar hook para obtener signed URL con la clave
       setPreviewReplyFileKey(fileKeyOrUrl)
     } catch (err) {
       console.error("Error generando signed url para reply:", err)
@@ -111,7 +171,7 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
     <Dialog
       header={
         <div className="flex flex-col">
-          <span className="text-base font-semibold">Vista previa del comentario</span>
+          <span className="text-base font-semibold">Vista previa del Marcador</span>
           {comment?.id && <span className="text-xs text-gray-500">ID: #{comment.id}</span>}
         </div>
       }
@@ -123,11 +183,21 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
       className="p-dialog-scrollable"
     >
       <Toast ref={toast} />
-
       <div className="flex flex-col gap-5 p-1 max-h-[65vh] overflow-auto">
         {/* Comentario principal */}
         <div className="p-4 bg-gray-50 rounded-lg shadow-inner text-sm max-h-36 overflow-auto">
           <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">{comment?.comment}</p>
+          <div className="mt-2 flex gap-2 flex-wrap">
+            {comment?.tags?.map((tag) => (
+              <span
+                key={tag.id}
+                className="text-xs px-2 py-0.5 rounded-full text-white"
+                style={{ backgroundColor: `#${tag.color}` || "black" }}
+              >
+                {tag.name}
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* Vista previa del archivo principal (PDF) */}
@@ -168,7 +238,6 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
           </div>
         )}
 
-        {/* Respuestas */}
         {comment?.replies && comment.replies.length > 0 && (
           <div className="p-3 bg-white border rounded-lg shadow-sm max-h-48 overflow-auto">
             <h4 className="text-sm font-semibold mb-3">Respuestas</h4>
@@ -180,6 +249,19 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
               >
                 <p className="text-gray-700 whitespace-pre-wrap">{reply.comment}</p>
 
+                {/* Mostrar tags en cada reply */}
+                <div className="mt-1 flex gap-2 flex-wrap">
+                  {reply.tags?.map((tag) => (
+                    <span
+                      key={tag.id}
+                      className="text-xs px-2 py-0.5 rounded-full text-white"
+                      style={{ backgroundColor: `#${tag.color}` || "black" }}
+                    >
+                      {tag.name}
+                    </span>
+                  ))}
+                </div>
+
                 {reply?.urlFile && (
                   <div className="mt-1 flex items-center gap-2">
                     <a
@@ -187,7 +269,7 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
                       className="text-blue-600 text-xs underline"
                       onClick={(e) => {
                         e.preventDefault()
-                        handlePreviewReplyFile(reply.urlFile)
+                        handlePreviewReplyFile(reply.urlFile!)
                       }}
                     >
                       📎 Ver archivo adjunto
@@ -207,6 +289,21 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
             onChange={(e) => setReplyText(e.target.value)}
             placeholder="Escribe tu respuesta..."
             className="text-sm"
+          />
+
+          <MultiSelect
+            value={replyTags}
+            options={tags.map((tag) => ({
+              label: tag.name,
+              value: tag.id,
+              style: { backgroundColor: tag.color || undefined, color: "white" },
+            }))}
+            onChange={(e) => setReplyTags(e.value)}
+            placeholder="Selecciona etiquetas"
+            className="!w-full"
+            display="chip"
+            maxSelectedLabels={3}
+            filter
           />
 
           <input

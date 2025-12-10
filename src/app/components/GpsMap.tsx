@@ -10,15 +10,18 @@ import {
   CircleMarker,
   useMapEvent,
   Tooltip,
+  useMapEvents,
+  Popup,
 } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import L from "leaflet"
 
 import DraggablePointer from "./DraggablePointer"
-import { GpsPoint, GpsPointComment, Marker as IMarker, ProjectLegend } from "@prisma/client"
+import { GpsPoint, Marker as IMarker, PointMarker } from "@prisma/client"
 import { Comment } from "postcss"
 import CommentPreviewDialog from "./CommentPreviewDialog"
 import NewCommentDialog from "./NewCommentDialog"
+import CardMarker from "./CardMarker"
 
 const formatDistance = (meters: number) => {
   const km = Math.floor(meters / 1000)
@@ -69,17 +72,16 @@ const SelectedPositionEffect = React.memo(function SelectedPositionEffect({
   return null
 })
 
-/* ---------------------------------------
-    ICONOS DE LEYENDA MEMOIZADOS
----------------------------------------- */
 const LegendMarkers = React.memo(function LegendMarkers({
   legend,
   visibleGroups,
   selectedPosition,
+  openPreview,
 }: {
-  legend: ProjectLegend[]
+  legend: PointMarker[]
   visibleGroups: Record<number, boolean>
   selectedPosition?: { lat: number; lon: number } | null
+  openPreview: any
 }) {
   const iconsById = useMemo(() => {
     const map = new Map<number, L.Icon | undefined>()
@@ -106,36 +108,36 @@ const LegendMarkers = React.memo(function LegendMarkers({
   return (
     <>
       {legend
-        .filter((item) => visibleGroups[item.markerId] ?? true)
+        .filter((item) => visibleGroups[item.markerId || 0] ?? true)
         .map((item) => (
           <MarkerWithAutoTooltip
             key={item.id}
             item={item as any}
             icon={iconsById.get(item.id)}
             selectedPosition={selectedPosition}
+            onEyeClick={openPreview}
           />
         ))}
     </>
   )
 })
 
-/* ---------------------------------------
-    MARKER CON TOOLTIP AUTOMÁTICO SOLO AL CAMBIAR DE SELECCIÓN
----------------------------------------- */
 const MarkerWithAutoTooltip = React.memo(function MarkerWithAutoTooltip({
   item,
   icon,
   selectedPosition,
+  onEyeClick, // nueva prop
 }: {
-  item: ProjectLegend & { marker: IMarker }
+  item: PointMarker & { marker: IMarker }
   icon?: L.Icon
   selectedPosition?: { lat: number; lon: number } | null
+  onEyeClick?: (item: any) => any // función opcional que se dispara al click del ojo
 }) {
   const markerRef = React.useRef<L.Marker>(null)
 
   const isSelected = selectedPosition
-    ? Math.abs(item.lat - selectedPosition.lat) < 0.00001 &&
-      Math.abs(item.lon - selectedPosition.lon) < 0.00001
+    ? Math.abs(item.lat || 0 - selectedPosition.lat) < 0.00001 &&
+      Math.abs(item.lon || 0 - selectedPosition.lon) < 0.00001
     : false
 
   useEffect(() => {
@@ -145,29 +147,45 @@ const MarkerWithAutoTooltip = React.memo(function MarkerWithAutoTooltip({
   }, [isSelected])
 
   return (
-    <Marker position={[item.lat, item.lon]} icon={icon} ref={markerRef}>
-      <Tooltip direction="top" offset={[0, -5]}>
+    <Marker position={[item.lat || 0, item.lon || 0]} icon={icon} ref={markerRef}>
+      <Popup>
         <div style={{ textAlign: "center" }}>
           <strong>{item.marker.name}</strong>
           <br />
-          <span>Lat: {item.lat.toFixed(5)}</span>
+          <span>Lat: {item.lat?.toFixed(5)}</span>
           <br />
-          <span>Lon: {item.lon.toFixed(5)}</span>
-          {item.description && (
+          <span>Lon: {item.lon?.toFixed(5)}</span>
+          {item.comment && (
             <>
               <br />
-              <em>{item.description}</em>
+              <em>{item.comment}</em>
             </>
           )}
+          <br />
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onEyeClick && onEyeClick(item)
+            }}
+            style={{
+              marginTop: "8px",
+              cursor: "pointer",
+              background: "none",
+              border: "none",
+              padding: 0,
+              color: "#007bff",
+              fontSize: "18px",
+            }}
+            aria-label="Ver detalles"
+            title="Ver detalles"
+          >
+            <i className="pi pi-eye" style={{ fontSize: "18px", color: "#007bff" }}></i>
+          </button>
         </div>
-      </Tooltip>
+      </Popup>
     </Marker>
   )
 })
-
-/* ---------------------------------------
-    MARCADOR DE REPRODUCCIÓN (Posición en tiempo)
----------------------------------------- */
 const PointsLayer = React.memo(function PointsLayer({
   points,
   setCurrentTime,
@@ -254,16 +272,14 @@ const MarkerUpdater = React.memo(function MarkerUpdater({
   setSelectComment,
   setOpenNewCommentDialog,
 }: {
-  points: (GpsPoint & { GpsPointComment: GpsPointComment[] })[]
+  points: GpsPoint[]
   currentTime: number
   setCurrentTime: (v: number) => void
   startKm: number
   setOpenNewCommentDialog: React.Dispatch<React.SetStateAction<boolean>>
 
   setOpenPreview: (v: any) => void
-  setSelectComment: React.Dispatch<
-    React.SetStateAction<(GpsPointComment & { replies: GpsPointComment[] }) | null>
-  >
+  setSelectComment: React.Dispatch<React.SetStateAction<(any & { replies: any[] }) | null>>
 }) {
   const map = useMap()
 
@@ -321,47 +337,7 @@ const MarkerUpdater = React.memo(function MarkerUpdater({
               Lat: {position.lat.toFixed(5)} <br />
               Lon: {position.lon.toFixed(5)} <br />
               Dist: {formatDistance(startKm + position.totalDistance)} <br />
-              {/* Comentarios */}
-              {position.GpsPointComment.length > 0 ? (
-                <div className="mt-1 text-[11px]">
-                  <strong>Comentario:</strong>{" "}
-                  {position.GpsPointComment[0].comment.length > 40
-                    ? position.GpsPointComment[0].comment.slice(0, 40) + "..."
-                    : position.GpsPointComment[0].comment}
-                </div>
-              ) : (
-                <div className="mt-1 text-[11px] text-gray-600">Sin comentarios</div>
-              )}
-              {/* Botones */}
-              <div className="mt-2 flex justify-center gap-2 pointer-events-auto">
-                {position.GpsPointComment?.length > 0 ? (
-                  // 🔵 Tiene comentarios → Ojo
-                  <button
-                    className="text-blue-600 hover:text-blue-800 pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setOpenPreview(true)
-                      setSelectComment(position?.GpsPointComment[0])
-                      console.log("Ver comentarios", position.id)
-                    }}
-                  >
-                    <i className="pi pi-eye text-[16px]" />
-                  </button>
-                ) : (
-                  // 🟢 No tiene comentarios → +
-                  <button
-                    className="text-green-600 hover:text-green-800 pointer-events-auto"
-                    onClick={(e) => {
-                      e.stopPropagation()
-
-                      setOpenNewCommentDialog(true)
-                      console.log("Agregar comentario", position.id)
-                    }}
-                  >
-                    <i className="pi pi-plus text-[16px]" />
-                  </button>
-                )}
-              </div>
+              <div className="mt-2 flex justify-center gap-2 pointer-events-auto"></div>
             </div>
           </Tooltip>
         </Marker>
@@ -373,10 +349,12 @@ const AddMarkersOnClick = React.memo(function AddMarkersOnClick({
   addingMode,
   setAddingMode,
   setMarkers,
+  openModal,
 }: {
   addingMode: boolean
   setAddingMode: (v: boolean) => void
   setMarkers: React.Dispatch<React.SetStateAction<MarkerWithIcon[]>>
+  openModal: any
 }) {
   useMapEvent("click", (e) => {
     if (!addingMode) return
@@ -393,12 +371,61 @@ const AddMarkersOnClick = React.memo(function AddMarkersOnClick({
       icon,
     }
 
-    setMarkers((prev) => [...prev, newMarker])
+    openModal(true)
+    // setMarkers((prev) => [...prev, newMarker])
     setAddingMode(false)
   })
 
   return null
 })
+// Componente simple que solo llama onSelect sin validaciones extra
+
+function AddMarkerMode({
+  onSelect,
+  onCancel,
+  canAddMarker, // función que retorna boolean | Promise<boolean>
+}: {
+  onSelect: (pos: [number, number]) => void
+  onCancel: () => void
+  canAddMarker: (pos: [number, number]) => boolean | Promise<boolean>
+}) {
+  const [position, setPosition] = useState<[number, number] | null>(null)
+  const [waiting, setWaiting] = useState(false)
+
+  useMapEvents({
+    mousemove(e) {
+      setPosition([e.latlng.lat, e.latlng.lng])
+    },
+    click: async (e) => {
+      if (waiting) return // evitar múltiples clicks mientras espera validación
+
+      const pos: [number, number] = [e.latlng.lat, e.latlng.lng]
+      setWaiting(true)
+      onSelect(pos)
+    },
+    keydown(e) {
+      // if (e.originalEvent === "Escape") onCancel()
+    },
+  })
+
+  return position ? (
+    <div
+      style={{
+        position: "absolute",
+        top: 10,
+        left: 10,
+        padding: "4px 8px",
+        background: "white",
+        borderRadius: 4,
+        zIndex: 1000,
+        pointerEvents: "none",
+        opacity: waiting ? 0.5 : 1,
+      }}
+    >
+      Lat: {position[0].toFixed(5)}, Lng: {position[1].toFixed(5)} {waiting && "(validando...)"}
+    </div>
+  ) : null
+}
 
 export default function GpsMap({
   points,
@@ -411,21 +438,21 @@ export default function GpsMap({
   setOpenPreview,
   setSelectComment,
   setOpenNewCommentDialog,
+  newPosition,
+  setNewPosition,
 }: {
-  points: (GpsPoint & { GpsPointComment: GpsPointComment[] })[]
-
-  setSelectComment: React.Dispatch<
-    React.SetStateAction<(GpsPointComment & { replies: GpsPointComment[] }) | null>
-  >
-
+  points: GpsPoint[]
+  setSelectComment: React.Dispatch<React.SetStateAction<(any & { replies: any[] }) | null>>
   setOpenNewCommentDialog: React.Dispatch<React.SetStateAction<boolean>>
   currentTime: number
   setCurrentTime: (v: number) => void
   setOpenPreview: React.Dispatch<React.SetStateAction<boolean>>
   startKm: number
-  legend: ProjectLegend[]
+  legend: PointMarker[]
   selectedPosition?: { lat: number; lon: number } | null
   visibleGroups: Record<number, boolean>
+  newPosition: any
+  setNewPosition: any
 }) {
   const polyline = useMemo(() => points.map((p) => [p.lat, p.lon]) as [number, number][], [points])
 
@@ -438,54 +465,146 @@ export default function GpsMap({
 
   const [markers, setMarkers] = useState<MarkerWithIcon[]>([])
   const [addingMode, setAddingMode] = useState(false)
+  const [selectedPositionNew, setSelectedPositionNew] = useState<[number, number] | null>(null)
 
   if (!points.length) {
     return <div className="text-center text-white">Cargando puntos...</div>
   }
 
+  const onSelectPosition = (pos: [number, number]) => {
+    setNewPosition(pos)
+    setAddingMode(false)
+  }
+
+  const onCancelAdding = () => {
+    setAddingMode(false)
+  }
   return (
-    <MapContainer center={center} zoom={15} style={{ height: "100%", width: "100%" }}>
-      <TileLayer url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" />
+    <div style={{ position: "relative", height: "100%", width: "100%" }}>
+      <MapContainer center={center} zoom={15} style={{ height: "100%", width: "100%" }}>
+        <TileLayer url="https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}" />
 
-      <Polyline positions={polyline} pathOptions={{ color: "black", weight: 10, opacity: 0.3 }} />
-      <Polyline positions={polyline} pathOptions={{ color: "white", weight: 1 }} />
+        <Polyline positions={polyline} pathOptions={{ color: "black", weight: 10, opacity: 0.3 }} />
+        <Polyline positions={polyline} pathOptions={{ color: "white", weight: 1 }} />
+        {addingMode && (
+          <AddMarkerMode
+            canAddMarker={async (pos: [number, number]) => {
+              // Ejemplo: no permitir si latitud < 0
+              await new Promise((r) => setTimeout(r, 300)) // simulo delay
+              return pos[0] >= 0
+            }}
+            onSelect={onSelectPosition}
+            onCancel={onCancelAdding}
+          />
+        )}
+        <DraggablePointer
+          markers={markers}
+          setMarkers={setMarkers as any}
+          addingMode={addingMode}
+          setAddingMode={setAddingMode}
+        />
 
-      <DraggablePointer
-        markers={markers}
-        setMarkers={setMarkers as any}
-        addingMode={addingMode}
-        setAddingMode={setAddingMode}
-      />
+        <SelectedPositionEffect selectedPosition={selectedPosition} />
 
-      <SelectedPositionEffect selectedPosition={selectedPosition} />
+        <LegendMarkers
+          legend={legend}
+          visibleGroups={visibleGroups}
+          selectedPosition={selectedPosition}
+          openPreview={(e: any) => {
+            setSelectComment(e)
+            setOpenPreview(true)
+            console.log(e)
+          }}
+        />
 
-      <LegendMarkers
-        legend={legend}
-        visibleGroups={visibleGroups}
-        selectedPosition={selectedPosition}
-      />
+        <MarkerUpdater
+          points={points}
+          currentTime={currentTime}
+          setCurrentTime={memoSetCurrentTime}
+          startKm={startKm}
+          setOpenPreview={setOpenPreview}
+          setSelectComment={setSelectComment}
+          setOpenNewCommentDialog={setOpenNewCommentDialog}
+        />
 
-      <MarkerUpdater
-        points={points}
-        currentTime={currentTime}
-        setCurrentTime={memoSetCurrentTime}
-        startKm={startKm}
-        setOpenPreview={setOpenPreview}
-        setSelectComment={setSelectComment}
-        setOpenNewCommentDialog={setOpenNewCommentDialog}
-      />
+        <AddMarkersOnClick
+          addingMode={addingMode}
+          setAddingMode={setAddingMode}
+          setMarkers={setMarkers}
+          openModal={() => setOpenNewCommentDialog(true)}
+        />
 
-      <AddMarkersOnClick
-        addingMode={addingMode}
-        setAddingMode={setAddingMode}
-        setMarkers={setMarkers}
-      />
+        {markers.map((m) => (
+          <Marker key={m.id} position={m.position} icon={m.icon}>
+            <Tooltip></Tooltip>
+          </Marker>
+        ))}
+      </MapContainer>
+      {addingMode && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 500,
+            pointerEvents: "none",
+          }}
+        />
+      )}
+      {addingMode && (
+        <>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              backgroundColor: "rgba(0,0,0,0.5)",
+              zIndex: 500,
+              pointerEvents: "none",
+            }}
+          />
 
-      {markers.map((m) => (
-        <Marker key={m.id} position={m.position} icon={m.icon}>
-          <Tooltip></Tooltip>
-        </Marker>
-      ))}
-    </MapContainer>
+          <button
+            onClick={() => setAddingMode(false)}
+            style={{
+              position: "absolute",
+              bottom: 20,
+              right: 120, // Le doy espacio para que no se superponga con "Añadir marcador"
+              zIndex: 1000,
+              padding: "12px 20px",
+              fontSize: 16,
+              borderRadius: "24px",
+              backgroundColor: "#dc3545", // rojo para cancelar
+              color: "white",
+              border: "none",
+              cursor: "pointer",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+            }}
+          >
+            -
+          </button>
+        </>
+      )}
+      {!addingMode && (
+        <button
+          onClick={() => setAddingMode(true)}
+          style={{
+            position: "absolute",
+            bottom: 20,
+            right: 20,
+            zIndex: 1000,
+            padding: "12px 20px",
+            fontSize: 16,
+            borderRadius: "24px",
+            backgroundColor: "#007bff",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+          }}
+        >
+          +
+        </button>
+      )}
+    </div>
   )
 }

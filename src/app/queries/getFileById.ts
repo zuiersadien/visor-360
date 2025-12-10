@@ -6,22 +6,12 @@ type Input = { id: number }
 export default async function getFileById(input: Input, ctx: Ctx) {
   const file = await db.file.findUnique({
     where: { id: input.id },
+
     include: {
-      gpsPoints: {
-        include: {
-          GpsPointComment: {
-            include: {
-              replies: {
-                where: { parentId: { not: null } },
-                orderBy: { createdAt: "asc" },
-              },
-            },
-          },
-        },
-      },
+      gpsPoints: {},
       project: {
         include: {
-          ProjectLegend: {
+          PointMarker: {
             include: {
               marker: true,
             },
@@ -31,7 +21,14 @@ export default async function getFileById(input: Input, ctx: Ctx) {
     },
   })
 
+  const tags = await db.tag.findMany({
+    where: {
+      id: {
+        in: file?.tags,
+      },
+    },
+  })
   if (!file) throw new Error("Archivo no encontrado")
 
-  return file
+  return { ...file, tags }
 }

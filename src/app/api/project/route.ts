@@ -7,11 +7,7 @@ export async function GET() {
       orderBy: { id: "desc" },
       include: {
         File: true,
-        ProjectLegend: {
-          include: {
-            marker: true,
-          },
-        },
+        PointMarker: true,
       },
     })
 

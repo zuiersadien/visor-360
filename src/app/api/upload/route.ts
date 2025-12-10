@@ -219,17 +219,16 @@ interface GpsPointDB {
  * 🛠️ Manejo y validación de la solicitud
  */
 async function handleRequest(req: Request): Promise<[string, string, string, string, number]> {
-  // Parsear el body como JSON
   const json = await req.json()
 
-  // Extraer los campos (asegurándonos que existan y sean strings)
   const file = String(json.fileKey ?? "")
   const gps = String(json.gpsKey ?? "")
   const fileName = String(json.fileName ?? "")
   const startPlace = String(json.startPlace ?? "")
-  const project = Number(json.project ?? "")
+  const projectId = Number(json.projectId ?? "")
 
-  return [file, gps, fileName, startPlace, project]
+  console.log(json)
+  return [file, gps, fileName, startPlace, projectId]
 }
 /**
  * 📁 Manejo del archivo: Guarda el archivo original y prepara las rutas
@@ -262,9 +261,6 @@ async function handleFileUpload(file: File): Promise<string> {
   return originalFilePath
 }
 
-/**
- * 🎥 Conversión de video: Convierte .insv a .mp4
- */
 async function convertVideo(originalFilePath: string, fileName: string): Promise<string> {
   const uploadDir = path.join(process.cwd(), "uploads")
   const baseName = fileName.replace(/\.insv$/i, "")
@@ -311,6 +307,49 @@ async function processGpsData(originalFilePath: string): Promise<GpsPointDB[]> {
   return cleanGPS
 }
 
+async function updateInDatabase(
+  fileId: number,
+  mp4FilePath: string | undefined,
+  fileName: string | undefined,
+  startPlace: string | undefined,
+  cleanGPS: GpsPointDB[] | undefined,
+  projectId: number | undefined,
+  tagIds?: number[]
+): Promise<boolean> {
+  // Construir objeto para actualizar solo los campos que sí llegan
+  const updateData: any = {}
+
+  if (fileName) updateData.fileName = path.basename(fileName)
+  if (mp4FilePath) updateData.filePath = mp4FilePath
+  if (startPlace) updateData.startPlace = startPlace
+  if (projectId !== undefined) updateData.projectId = projectId
+  if (tagIds) updateData.tags = tagIds
+
+  // Actualizar el registro del archivo
+  await db.file.update({
+    where: { id: fileId },
+    data: updateData,
+  })
+
+  // Si llega nuevo GPS, elimina puntos antiguos y crea nuevos
+  if (cleanGPS && cleanGPS.length > 0) {
+    // Eliminar puntos GPS antiguos
+    await db.gpsPoint.deleteMany({ where: { fileId } })
+
+    // Insertar nuevos puntos GPS
+    await db.$executeRaw`
+      INSERT INTO "GpsPoint" ("lat", "lon", "second", "segmentDistance", "totalDistance", "fileId")
+      VALUES ${Prisma.join(
+        cleanGPS.map(
+          (p) =>
+            Prisma.sql`(${p.lat}, ${p.lon}, ${p.second}, ${p.segmentDistance}, ${p.totalDistance}, ${fileId})`
+        )
+      )}
+    `
+  }
+
+  return true
+}
 async function saveToDatabase(
   mp4FilePath: string,
   fileName: string,
@@ -459,6 +498,8 @@ export async function POST(req: Request) {
   try {
     const [fileKey, gpsKey, fileName, startPlace, projectId] = await handleRequest(req)
 
+    console.log(handleRequest(req))
+
     const originalFilePath = fileKey
     const key = `${gpsKey}`
     const gpxContent = await getFileContent(key)
@@ -484,5 +525,48 @@ export async function POST(req: Request) {
     const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
     const status = errorMessage.includes("file provided") ? 400 : 500
     return NextResponse.json({ error: errorMessage }, { status: status })
+  }
+}
+
+export async function PUT(req: Request) {
+  try {
+    const { id, fileKey, gpsKey, fileName, startPlace, projectId, tagIds } = await req.json()
+
+    if (!id) {
+      return NextResponse.json({ error: "ID is required for update" }, { status: 400 })
+    }
+
+    // Similar lógica que en POST pero para actualizar
+    const gpxContent = gpsKey ? await getFileContent(gpsKey) : null
+    const gpsPointsWithDistances = gpxContent ? parseGpxAndCalculateDistances(gpxContent) : []
+
+    // Actualizar registro en DB
+
+    const updated = await updateInDatabase(
+      id,
+      fileKey,
+      fileName,
+      startPlace,
+      gpsPointsWithDistances,
+      projectId,
+      tagIds
+    )
+
+    if (!updated) {
+      return NextResponse.json({ error: "Element not found" }, { status: 404 })
+    }
+
+    return NextResponse.json({
+      ok: true,
+      message: "Elemento actualizado correctamente",
+      updatedId: id,
+      savedPoints: gpsPointsWithDistances.length,
+    })
+  } catch (error) {
+    console.error("Error in PUT handler:", error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Unknown error" },
+      { status: 500 }
+    )
   }
 }

@@ -14,6 +14,7 @@ const menu = [
   { label: "Galería", icon: "pi pi-images", path: "/gallery" },
   { label: "Marcadores", icon: "pi pi-map-marker", path: "/marker" },
   { label: "Proyectos", icon: "pi pi-folder", path: "/project" },
+  { label: "Tags", icon: "pi pi-tags", path: "/tag" },
 ]
 
 export default function Sidebar({ currentUser }: any) {

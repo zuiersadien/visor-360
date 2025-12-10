@@ -22,9 +22,9 @@ model User {
   hashedPassword String?
   role           String   @default("USER")
 
-  tokens          Token[]
-  sessions        Session[]
-  GpsPointComment GpsPointComment[]
+  tokens      Token[]
+  sessions    Session[]
+  PointMarker PointMarker[]
 }
 
 model Session {
@@ -60,24 +60,10 @@ model Token {
 }
 
 model Project {
-  id            Int             @id @default(autoincrement())
-  name          String
-  File          File[]
-  ProjectLegend ProjectLegend[]
-}
-
-model ProjectLegend {
-  id Int @id @default(autoincrement())
-
-  lat Float
-  lon Float
-
-  projectId   Int
-  project     Project @relation(fields: [projectId], references: [id])
-  description String?
-
-  markerId Int
-  marker   Marker @relation(fields: [markerId], references: [id])
+  id          Int           @id @default(autoincrement())
+  name        String
+  File        File[]
+  PointMarker PointMarker[]
 }
 
 model File {
@@ -95,10 +81,10 @@ model File {
 }
 
 model Marker {
-  id            Int             @id @default(autoincrement())
-  name          String
-  icon          String
-  ProjectLegend ProjectLegend[]
+  id          Int           @id @default(autoincrement())
+  name        String
+  icon        String
+  PointMarker PointMarker[]
 }
 
 model GpsPoint {
@@ -109,27 +95,29 @@ model GpsPoint {
   segmentDistance Float
   totalDistance   Float
 
-  fileId          Int
-  file            File?             @relation(fields: [fileId], references: [id])
-  GpsPointComment GpsPointComment[]
+  fileId Int
+  file   File? @relation(fields: [fileId], references: [id])
 }
 
-model GpsPointComment {
+model PointMarker {
   id        Int      @id @default(autoincrement())
   createdAt DateTime @default(now())
+  lat       Float?
+  lon       Float?
+  comment   String
+  urlFile   String?
+  Tags      Int[]
 
-  comment String
-  urlFile String? // archivo adjunto opcional
+  markerId    Int?
+  projectId   Int?
+  parentId    Int?
+  createdById Int
 
-  gpsPointId Int
-  gpsPoint   GpsPoint @relation(fields: [gpsPointId], references: [id])
-
-  createdBy Int
-  user      User @relation(fields: [createdBy], references: [id])
-
-  parentId Int?
-  parent   GpsPointComment?  @relation("CommentReplies", fields: [parentId], references: [id])
-  replies  GpsPointComment[] @relation("CommentReplies")
+  project Project?      @relation(fields: [projectId], references: [id])
+  user    User          @relation(fields: [createdById], references: [id])
+  marker  Marker?       @relation(fields: [markerId], references: [id])
+  parent  PointMarker?  @relation("Replies", fields: [parentId], references: [id])
+  replies PointMarker[] @relation("Replies")
 }
 
 model Tag {

@@ -7,58 +7,98 @@ import { FileUpload } from "primereact/fileupload"
 import { FloatLabel } from "primereact/floatlabel"
 import { Button } from "primereact/button"
 import { Dropdown } from "primereact/dropdown"
+import { MultiSelect } from "primereact/multiselect"
 import { useMutation, useQuery } from "@blitzjs/rpc"
 import createNewElement from "../(main)/gallery/mutations/createNewElement"
 import getProjects from "../queries/getProject"
 import { uploadFileDirectlyToS3 } from "../lib/uploadToS3"
+import getTags from "../queries/getTags"
 
 const videoSchema = z.object({
   startPlace: z.string().min(1, "Lugar requerido"),
   fileName: z.string().min(1, "Nombre requerido"),
   file: z.instanceof(File, { message: "Debe seleccionar un archivo válido" }).optional(),
   gps: z.instanceof(File, { message: "Debe seleccionar un archivo gps válido" }).optional(),
-  project: z.number(),
+  projectId: z.number(),
+  tags: z.array(z.number()).optional(),
+  id: z.number().optional(),
 })
 
 type VideoForm = z.infer<typeof videoSchema>
 
-export default function GalleryForm() {
+type Props = {
+  initialData?: Partial<VideoForm>
+}
+
+export default function GalleryForm({ initialData }: Props) {
   const [newElementMutation] = useMutation(createNewElement)
-  const [projects, { isLoading }] = useQuery(getProjects, undefined)
+  const [projects] = useQuery(getProjects, undefined)
+  const [tags] = useQuery(getTags, undefined)
 
   const formik = useFormik<VideoForm>({
-    initialValues: { startPlace: "", fileName: "", file: undefined, gps: undefined, project: 0 },
+    initialValues: {
+      startPlace: initialData?.startPlace || "",
+      fileName: initialData?.fileName || "",
+      file: undefined, // archivo nuevo para reemplazar
+      gps: undefined,
+      projectId: initialData?.projectId || 0,
+      tags: initialData?.tags || [],
+      id: initialData?.id,
+    },
     onSubmit: async (values, { setErrors, setSubmitting }) => {
       try {
-        const fileKey = await uploadFileDirectlyToS3(values?.file as any, values.fileName + ".mp4")
-        const gpsKey = await uploadFileDirectlyToS3(values?.gps as any, values.fileName + ".gpx")
+        let fileKey: string | undefined = undefined
+        if (values.file) {
+          fileKey = await uploadFileDirectlyToS3(values.file as any, values.fileName + ".mp4")
+        }
 
-        const response = await fetch("/api/upload", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fileKey,
-            gpsKey,
-            startPlace: values.startPlace,
-            fileName: values.fileName,
-            project: values.project,
-          }),
+        let gpsKey: string | undefined = undefined
+        if (values.gps) {
+          gpsKey = await uploadFileDirectlyToS3(values.gps as any, values.fileName + ".gpx")
+        }
+
+        const method = values.id ? "PUT" : "POST"
+        const url = "/api/upload" // ajusta la ruta según tu backend
+
+        const body = {
+          id: values.id,
+          startPlace: values.startPlace,
+          fileName: values.fileName,
+          fileKey,
+          gpsKey,
+          projectId: values.projectId,
+          tagIds: values.tags || [],
+        }
+
+        const response = await fetch(url, {
+          method,
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
         })
 
-        if (!response.ok) throw new Error("Error procesando en el servidor")
-      } catch (err) {
+        if (!response.ok) {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Error al subir o procesar archivo.")
+        }
+
+        const result = await response.json()
+        console.log("Respuesta backend:", result)
+      } catch (err: any) {
         console.error(err)
-        setErrors({ fileName: "Error al subir o procesar archivo." })
+        setErrors({ fileName: err.message || "Error al subir o procesar archivo." })
+      } finally {
+        setSubmitting(false)
       }
-      setSubmitting(false)
     },
   })
 
   return (
-    <div className="flex justify-center  w-full h-full ">
+    <div className="flex justify-center w-full h-full ">
       <form
         onSubmit={formik.handleSubmit}
-        className="flex flex-col gap-6 bg-white p-8 rounded-2xl shadow-xl w-full "
+        className="flex flex-col gap-6 bg-white p-8 rounded-2xl shadow-xl w-full"
       >
         <FloatLabel>
           <InputText
@@ -91,13 +131,25 @@ export default function GalleryForm() {
           <label className="text-gray-700 font-medium">Proyecto</label>
           <Dropdown
             options={projects || []}
-            value={projects?.find((p) => p.id === formik.values.project) || null}
+            value={projects?.find((p) => p.id === formik.values.projectId) || null}
             onChange={(e) => formik.setFieldValue("project", e.value.id)}
             optionLabel="name"
             placeholder="Seleccionar proyecto"
             className="w-full"
             dropdownIcon="pi pi-chevron-down"
             style={{ width: "100%" }}
+          />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-gray-700 font-medium">Tags</label>
+          <MultiSelect
+            value={formik.values.tags}
+            options={tags ? tags.map((tag) => ({ label: tag.name, value: tag.id })) : []}
+            onChange={(e) => formik.setFieldValue("tags", e.value)}
+            placeholder="Selecciona los tags"
+            display="chip"
+            className="w-full"
           />
         </div>
 
@@ -109,8 +161,8 @@ export default function GalleryForm() {
             customUpload
             auto
             chooseLabel="Seleccionar Video"
-            className="w-full [&>span]:w-full [&>span]:justify-center" // CORRECTO
-            chooseOptions={{ className: "w-full" }} // ESTO ES CLAVE
+            className="w-full [&>span]:w-full [&>span]:justify-center"
+            chooseOptions={{ className: "w-full" }}
             onSelect={(e) => formik.setFieldValue("file", e.files?.[0])}
           />
           {formik.values.file && (
@@ -139,7 +191,11 @@ export default function GalleryForm() {
           )}
         </div>
 
-        <Button label="Guardar" type="submit" className="w-full" />
+        <Button
+          label={formik.values.id ? "Actualizar" : "Guardar"}
+          type="submit"
+          className="w-full"
+        />
       </form>
     </div>
   )
