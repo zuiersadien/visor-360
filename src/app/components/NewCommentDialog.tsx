@@ -16,7 +16,7 @@ interface NewCommentDialogProps {
   onSubmit: (data: {
     comment: string
     file: File | null
-    tags: Tag[]
+    tags: number[]
     marker: Marker | null
   }) => Promise<void>
   tags: Tag[]
@@ -55,9 +55,9 @@ const NewCommentDialog: React.FC<NewCommentDialogProps> = ({
   const [commentFile, setCommentFile] = useState<File | null>(null)
 
   // tags ahora son number[]
-  const [selectedTags, setSelectedTags] = useState<Tag[]>([])
+  const [selectedTags, setSelectedTags] = useState<number[]>([])
 
-  const [selectedMarker, setSelectedMarker] = useState<Marker | null>(null)
+  const [selectedMarker, setSelectedMarker] = useState<number | null>(null)
   const toast = useRef<Toast>(null)
   const [markers] = useQuery(getMarkers, undefined)
 
@@ -66,7 +66,7 @@ const NewCommentDialog: React.FC<NewCommentDialogProps> = ({
   // --------------------------
   useEffect(() => {
     if (visible) {
-      setSelectedTags(defaultTags) // IDs numéricos
+      setSelectedTags(defaultTags.map((e) => e.id)) // IDs numéricos
     }
   }, [visible, defaultTags])
 
@@ -87,7 +87,7 @@ const NewCommentDialog: React.FC<NewCommentDialogProps> = ({
       comment: commentText,
       file: commentFile,
       tags: selectedTags, // number[]
-      marker: selectedMarker,
+      marker: selectedMarker as any,
     })
 
     setCommentText("")
@@ -102,7 +102,7 @@ const NewCommentDialog: React.FC<NewCommentDialogProps> = ({
   const handleHide = () => {
     setCommentText("")
     setCommentFile(null)
-    setSelectedTags(defaultTags)
+    setSelectedTags(defaultTags.map((e) => e.id))
     setSelectedMarker(null)
     onHide()
   }
@@ -148,13 +148,16 @@ const NewCommentDialog: React.FC<NewCommentDialogProps> = ({
           <MultiSelect
             value={selectedTags}
             options={tags}
-            onChange={(e) => setSelectedTags(e.value)}
+            onChange={(e) => {
+              console.log(e.value)
+              setSelectedTags(e.value)
+            }}
             optionLabel="name"
             optionValue="id"
             placeholder="Selecciona tags"
             display="chip"
             className="!w-full"
-          />
+          />{" "}
         </div>
 
         <div>

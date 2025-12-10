@@ -3,15 +3,20 @@
 import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3"
 
 export const s3 = new S3Client({
-  // region: process.env.AWS_REGION, // región cualquiera para MinIO, puede ser fija
-  region: "us-east-1",
-  endpoint: process.env.S3_ENDPOINT, // tu MinIO local
+  region: process.env.S3_REGION || "us-east-1", // tu región
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
-  forcePathStyle: true, // importante para MinIO
 })
+// export const s3 = new S3Client({
+//   endpoint: process.env.S3_ENDPOINT, // tu MinIO local
+//   credentials: {
+//     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+//     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+//   },
+//   forcePathStyle: true, // importante para MinIO
+// })
 
 export async function getFileContent(key: string): Promise<string> {
   const command = new GetObjectCommand({

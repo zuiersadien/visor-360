@@ -1,18 +1,35 @@
 import db from "db"
-import { SecurePassword } from "@blitzjs/auth/secure-password"
+import bcrypt from "bcryptjs"
+import { Role } from "@/types"
 
 export default async function signup(input: { password: string; email: string }, ctx: any) {
-  const blitzContext = ctx
-  const hashedPassword = await SecurePassword.hash((input.password as string) || "test-password")
-  const email = (input.email as string) || "test" + Math.random() + "@test.com"
+  const { password, email } = input
+
+  if (!email) throw new Error("Email is required")
+  if (!password) throw new Error("Password is required")
+
+  // 1. Hash password con bcrypt
+  const hashedPassword = await bcrypt.hash(password, 10)
+
+  // 2. Crear usuario
   const user = await db.user.create({
-    data: { email, hashedPassword },
+    data: {
+      email,
+      hashedPassword,
+      role: "USER",
+    },
   })
 
-  await blitzContext.session.$create({
+  // 3. Crear sesión
+  await ctx.session.$create({
     userId: user.id,
-    role: "user",
+    role: (user.role as Role) ?? "USER",
   })
 
-  return { userId: blitzContext.session.userId, ...user, email: input.email }
+  // 4. Devolver sin hashedPassword
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+  }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import db from "@/db"
-import { SecurePassword } from "@blitzjs/auth/secure-password"
+import bcrypt from "bcryptjs"
 
 export async function GET() {
   try {
@@ -12,12 +12,12 @@ export async function GET() {
   }
 }
 
-// POST /api/users — crea un usuario
 export async function POST(req: Request) {
   try {
     const { name, email, hashedPassword, role } = await req.json()
 
-    const password = await SecurePassword.hash(hashedPassword)
+    // Hashear con bcryptjs (PURO JS, sin binarios nativos)
+    const password = await bcrypt.hash(hashedPassword, 10)
 
     const newUser = await db.user.create({
       data: {

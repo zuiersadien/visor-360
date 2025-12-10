@@ -143,9 +143,8 @@ export default function GalleryPreviewPage() {
                   setSearch(formatDistance(startKm + p.totalDistance))
                   setCurrentTime(p.second)
                 }}
-                placeholder="Buscar distancia..."
-                size={"small"}
                 className="!w-full"
+                placeholder="Buscar distancia..."
                 inputClassName="!w-full text-sm"
               />
             </div>
@@ -245,7 +244,7 @@ export default function GalleryPreviewPage() {
                   markerId: marker?.id,
                   lat: newPosition?.[0],
                   lon: newPosition?.[1],
-                  tags: tags.map((e) => e.id),
+                  tags: tags,
                 }),
               })
 

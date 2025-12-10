@@ -3,7 +3,7 @@ import db from "db"
 import { authenticateUser } from "./login"
 import { ChangePassword } from "../validations"
 import { resolver } from "@blitzjs/rpc"
-import { SecurePassword } from "@blitzjs/auth/secure-password"
+import bcrypt from "bcryptjs"
 
 export default resolver.pipe(
   resolver.zod(ChangePassword),
@@ -11,8 +11,13 @@ export default resolver.pipe(
   async ({ currentPassword, newPassword }, ctx) => {
     const user = await db.user.findFirst({ where: { id: ctx.session.userId } })
     if (!user) throw new NotFoundError()
+
+    // Verificar contraseña actual con tu función existente
     await authenticateUser(user.email, currentPassword)
-    const hashedPassword = await SecurePassword.hash(newPassword.trim())
+
+    // Hashear la nueva contraseña sin SecurePassword
+    const hashedPassword = await bcrypt.hash(newPassword.trim(), 10)
+
     await db.user.update({
       where: { id: user.id },
       data: { hashedPassword },

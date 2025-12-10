@@ -41,11 +41,7 @@ export async function POST(req: NextRequest) {
         projectId: projectId ?? null,
         parentId: parentId ?? null,
         createdById,
-        Tags: tags
-          ? {
-              set: tags,
-            }
-          : undefined,
+        Tags: tags ? tags : [],
       },
     })
 
@@ -79,11 +75,7 @@ export async function PUT(req: NextRequest) {
         projectId,
         parentId,
         createdById,
-        Tags: tags
-          ? {
-              set: tags,
-            }
-          : undefined,
+        Tags: tags ? tags : [],
       },
     })
 

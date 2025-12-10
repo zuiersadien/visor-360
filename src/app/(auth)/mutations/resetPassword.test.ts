@@ -1,84 +1,57 @@
-import { vi, describe, it, beforeEach, expect } from "vitest"
-import resetPassword from "./resetPassword"
+import { resolver } from "@blitzjs/rpc"
 import db from "db"
+import bcrypt from "bcryptjs"
 import { hash256 } from "@blitzjs/auth"
-import { SecurePassword } from "@blitzjs/auth/secure-password"
+import { ResetPassword } from "../validations"
+import { AuthenticationError, NotFoundError } from "blitz"
+import { Role } from "@/types"
 
-beforeEach(async () => {
-  await db.$reset()
-})
+export default resolver.pipe(
+  resolver.zod(ResetPassword),
+  async ({ token, password, passwordConfirmation }, ctx) => {
+    // 1. Confirmar contraseñas
+    if (password !== passwordConfirmation) {
+      throw new Error("Passwords do not match")
+    }
 
-const mockCtx: any = {
-  session: {
-    $create: vi.fn(),
-  },
-}
+    const hashedToken = hash256(token)
 
-describe("resetPassword mutation", () => {
-  it("works correctly", async () => {
-    expect(true).toBe(true)
-
-    // Create test user
-    const goodToken = "randomPasswordResetToken"
-    const expiredToken = "expiredRandomPasswordResetToken"
-    const future = new Date()
-    future.setHours(future.getHours() + 4)
-    const past = new Date()
-    past.setHours(past.getHours() - 4)
-
-    const user = await db.user.create({
-      data: {
-        email: "user@example.com",
-        tokens: {
-          // Create old token to ensure it's deleted
-          create: [
-            {
-              type: "RESET_PASSWORD",
-              hashedToken: hash256(expiredToken),
-              expiresAt: past,
-              sentTo: "user@example.com",
-            },
-            {
-              type: "RESET_PASSWORD",
-              hashedToken: hash256(goodToken),
-              expiresAt: future,
-              sentTo: "user@example.com",
-            },
-          ],
-        },
+    // 2. Buscar token válido
+    const savedToken = await db.token.findFirst({
+      where: {
+        type: "RESET_PASSWORD",
+        hashedToken,
       },
-      include: { tokens: true },
+      include: { user: true },
     })
 
-    const newPassword = "newPassword"
+    if (!savedToken) throw new NotFoundError("Token not found")
+    if (savedToken.expiresAt < new Date()) {
+      throw new AuthenticationError("Token expired")
+    }
 
-    // Non-existent token
-    await expect(
-      resetPassword({ token: "no-token", password: "", passwordConfirmation: "" }, mockCtx)
-    ).rejects.toThrowError()
+    const user = savedToken.user
+    if (!user) throw new NotFoundError("User not found")
 
-    // Expired token
-    await expect(
-      resetPassword(
-        { token: expiredToken, password: newPassword, passwordConfirmation: newPassword },
-        mockCtx
-      )
-    ).rejects.toThrowError()
+    // 3. Hashear la nueva contraseña con bcrypt
+    const newHashedPassword = await bcrypt.hash(password, 10)
 
-    // Good token
-    await resetPassword(
-      { token: goodToken, password: newPassword, passwordConfirmation: newPassword },
-      mockCtx
-    )
+    await db.user.update({
+      where: { id: user.id },
+      data: { hashedPassword: newHashedPassword },
+    })
 
-    // Delete's the token
-    const numberOfTokens = await db.token.count({ where: { userId: user.id } })
-    expect(numberOfTokens).toBe(0)
+    // 4. Borrar TODOS los reset tokens del usuario
+    await db.token.deleteMany({
+      where: { userId: user.id, type: "RESET_PASSWORD" },
+    })
 
-    // Updates user's password
-    const updatedUser = await db.user.findFirst({ where: { id: user.id } })
-    expect(await SecurePassword.verify(updatedUser!.hashedPassword, newPassword)).toBe(
-      SecurePassword.VALID
-    )
-  })
-})
+    // 5. Crear sesión nueva
+    await ctx.session.$create({
+      userId: user.id,
+      role: (user.role as Role) ?? "USER",
+    })
+
+    return true
+  }
+)

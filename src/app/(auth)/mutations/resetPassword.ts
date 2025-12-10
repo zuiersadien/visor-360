@@ -1,6 +1,6 @@
 import { hash256 } from "@blitzjs/auth"
-import { SecurePassword } from "@blitzjs/auth/secure-password"
 import { resolver } from "@blitzjs/rpc"
+import bcrypt from "bcryptjs"
 import db from "db"
 import { ResetPassword } from "../validations"
 import login from "./login"
@@ -12,38 +12,43 @@ export class ResetPasswordError extends Error {
 
 export default resolver.pipe(resolver.zod(ResetPassword), async ({ password, token }, ctx) => {
   if (!token) throw new ResetPasswordError("Token is required")
-  // 1. Try to find this token in the database
+
+  // 1. Buscar token
   const hashedToken = hash256(token)
-  const possibleToken = await db.token.findFirst({
+  const savedToken = await db.token.findFirst({
     where: { hashedToken, type: "RESET_PASSWORD" },
     include: { user: true },
   })
 
-  // 2. If token not found, error
-  if (!possibleToken) {
+  // 2. Token inválido
+  if (!savedToken) throw new ResetPasswordError()
+
+  // 3. Token expirado
+  if (savedToken.expiresAt < new Date()) {
+    await db.token.delete({ where: { id: savedToken.id } }) // cleanup
     throw new ResetPasswordError()
   }
-  const savedToken = possibleToken
 
-  // 3. Delete token so it can't be used again
+  const userId = savedToken.userId
+
+  // 4. eliminar token inmediatamente (evitar reuso)
   await db.token.delete({ where: { id: savedToken.id } })
 
-  // 4. If token has expired, error
-  if (savedToken.expiresAt < new Date()) {
-    throw new ResetPasswordError()
-  }
+  // 5. Hashear nueva contraseña con bcrypt
+  const hashedPassword = await bcrypt.hash(password.trim(), 10)
 
-  // 5. Since token is valid, now we can update the user's password
-  const hashedPassword = await SecurePassword.hash(password.trim())
+  // 6. Actualizar usuario
   const user = await db.user.update({
-    where: { id: savedToken.userId },
+    where: { id: userId },
     data: { hashedPassword },
   })
 
-  // 6. Revoke all existing login sessions for this user
-  await db.session.deleteMany({ where: { userId: user.id } })
+  // 7. Cerrar TODAS las sesiones existentes
+  await db.session.deleteMany({
+    where: { userId: user.id },
+  })
 
-  // 7. Now log the user in with the new credentials
+  // 8. Autologin con la nueva contraseña
   await login({ email: user.email, password }, ctx)
 
   return true

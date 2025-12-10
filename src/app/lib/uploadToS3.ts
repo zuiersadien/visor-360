@@ -1,8 +1,13 @@
 export async function uploadFileDirectlyToS3(file: File, originalFileName: string) {
   if (!file) throw new Error("No file provided")
 
-  const signResponse = await fetch(`/api/s3/sign?fileName=${encodeURIComponent(originalFileName)}`)
+  // const signResponse = await fetch(`/api/s3/sign?fileName=${encodeURIComponent(originalFileName)}`)
 
+  const signResponse = await fetch(
+    `/api/s3/sign?fileName=${encodeURIComponent(originalFileName)}&fileType=${encodeURIComponent(
+      file.type
+    )}`
+  )
   if (!signResponse.ok) throw new Error("Error obteniendo URL firmada.")
 
   const { uploadUrl, fields } = await signResponse.json()
