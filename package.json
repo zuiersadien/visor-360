@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "npx prisma generate && blitz build",
+    "postinstall": "npx prisma generate && npx next build",
     "dev": "blitz dev",
-    "build": "npx prisma generate && blitz build",
+    "build": "npx prisma generate &&  npx next build",
     "start": "blitz start",
     "studio": "blitz prisma studio",
     "lint": "eslint --ignore-path .gitignore --ext .js,.ts,.tsx .",
