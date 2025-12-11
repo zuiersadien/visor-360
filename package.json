@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "postinstall": "blitz build",
     "dev": "blitz dev",
     "build": "blitz build",
     "start": "blitz start",
@@ -23,6 +24,9 @@
     "*.{js,ts,tsx}": [
       "eslint --fix"
     ]
+  },
+  "engines": {
+    "node": "24.x"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.933.0",

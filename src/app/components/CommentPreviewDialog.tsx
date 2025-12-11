@@ -200,7 +200,6 @@ const CommentPreviewDialog: React.FC<CommentPreviewDialogProps> = ({
           </div>
         </div>
 
-        {/* Vista previa del archivo principal (PDF) */}
         {signedUrl && (
           <div className="flex justify-center">
             <iframe

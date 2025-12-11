@@ -40,3 +40,10 @@ next-env.d.ts
 .vscode
 
 .env
+
+/minio_data
+/postgres_data
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml
